@@ -1,0 +1,79 @@
+clear;
+clc;
+
+% load data
+%loadfile = input('simout_t or simout_n?  ','s');
+load('simout_t');
+data = Rrec;
+
+% set parameters
+N = 5000;     % number of particles
+T = size(data,1);      % total time
+phi = 0.95;
+sigma_h = 0.1;
+theta = [0.3 0.5 0.7];
+
+
+% initialise particle filter
+m0 = 0;
+P0 = sigma_h;
+state = normrnd(m0,P0,N,1);
+weight = 1/N * ones(N,1);
+
+% pre-allocate space
+state_out = zeros(T,1);
+weight_t = zeros(N,1);
+ESS = zeros(T,1);
+
+for t = 1:T
+
+% sample from importance density
+mhat = phi.*state;
+statehat = normrnd(mhat,sigma_h);
+
+% calculate weights
+y = data(t,:);
+mu = zeros(1,3);
+    for i = 1:N
+        S = diag(theta.^2 * exp(statehat(i)));
+        weight_t(i) = weight(i) * mvnpdf(y,mu,S);
+    end
+
+% normalize weights
+Nweight = weight_t./sum(weight_t);
+
+% store output
+state_out(t) = sum(statehat.*Nweight);
+
+% drawnow;
+% plot(t,state_out(t),'.r');
+% hold on
+% plot(t,hrec(t),'ok')
+
+% systematic adaptive resampling
+ESS(t) = 1/sum(Nweight.^2);
+    if ESS(t) < N/2
+        IND = zeros(N,1);
+        u = rand(1);
+        for j = 1:N
+            uk = ((j - 1) + u)/N;
+            IND(j,1) = find(uk < cumsum(Nweight),1,'first')';
+        end
+        state = statehat(IND);
+        Nweight = 1/N * ones(N,1);
+        weight = Nweight;
+    
+    else
+        state = statehat;
+        weight = Nweight;
+    end
+end
+
+subplot(2,1,1)
+plot(hrec,'g')
+hold on
+plot(state_out,'r')
+title('Filtered State')
+subplot(2,1,2)
+plot(ESS)
+title('ESS')
